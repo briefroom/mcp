@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+      # package-lock.json は export に含めない運用のため npm ci / cache:npm は使わない
+      # (lockfile 不在だと setup-node の cache:npm と npm ci はどちらも fail する)
+      - run: npm install
+      - run: npm run build
+      - run: npm test

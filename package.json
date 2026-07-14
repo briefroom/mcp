@@ -1,0 +1,62 @@
+{
+  "name": "@briefroom/mcp",
+  "version": "0.2.0",
+  "description": "briefroom stdio MCP server — expose the briefroom CLI to Claude Code, Codex, and other agents.",
+  "license": "MIT",
+  "mcpName": "io.github.briefroom/mcp",
+  "type": "module",
+  "bin": {
+    "briefroom-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README.ja.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/briefroom/mcp.git"
+  },
+  "homepage": "https://github.com/briefroom/mcp#readme",
+  "bugs": {
+    "url": "https://github.com/briefroom/mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "briefroom",
+    "claude",
+    "claude-code",
+    "codex",
+    "cursor",
+    "agent",
+    "html",
+    "review"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "prebuild": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo 'no lint configured (yet)'",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@briefroom/cli": "^0.2.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@vitest/coverage-v8": "^4.1.9",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  }
+}
