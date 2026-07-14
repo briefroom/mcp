@@ -1,6 +1,6 @@
 {
   "name": "@briefroom/mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "briefroom stdio MCP server — expose the briefroom CLI to Claude Code, Codex, and other agents.",
   "license": "MIT",
   "mcpName": "io.github.briefroom/mcp",
