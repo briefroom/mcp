@@ -7,7 +7,7 @@ import {
 } from '../lib/tool-result.js'
 
 export const deployHtmlDescription =
-  'Zip a local directory of HTML/CSS/JS and upload it to briefroom, returning a share URL. Supports a share-link expiry (also applied to the existing link on redeploy) and password protection (Pro+ plans). Uses BRIEFROOM_TOKEN (or the briefroom CLI login) for authentication. Non-interactive.'
+  'Zip a local directory of HTML/CSS/JS and upload it to briefroom, returning a share URL. Supports a share-link expiry (also applied to the existing link on redeploy), a room display `name` (any language, e.g. Japanese; distinct from `room` slug — see below), and password protection (Pro+ plans). Uses BRIEFROOM_TOKEN (or the briefroom CLI login) for authentication. Non-interactive.'
 
 // Flag injection 防御: `-` 始まりの値は CLI の argv パーサ (citty/mri) に
 // フラグとして解釈され、`--api-url=http://evil/` を注入して PAT を攻撃者に
@@ -36,7 +36,15 @@ export const deployHtmlInputShape = {
     .refine((v) => !v.startsWith('-'), { message: ROOM_INJECTION_MSG })
     .optional()
     .describe(
-      'Room slug to deploy into. Overrides briefroom.json / directory name.',
+      'Room slug — the ascii kebab-case identifier used to redeploy into an existing room (NOT the display name, and NOT part of the share URL). Overrides briefroom.json / directory name.',
+    ),
+  name: z
+    .string()
+    .min(1)
+    .max(100)
+    .optional()
+    .describe(
+      'Room display name shown on the dashboard and viewer (1-100 chars, any language including Japanese). Distinct from `room` (slug) and from the auto-issued share URL token. Sets the name on first deploy; on redeploy, updates the existing room name only when set explicitly.',
     ),
   expires: z
     .enum(['7d', '30d', 'never'])
@@ -69,6 +77,7 @@ export const deployHtmlInputShape = {
 export type DeployHtmlInput = {
   path: string
   room?: string
+  name?: string
   expires?: '7d' | '30d' | 'never'
   new?: boolean
   password?: string
@@ -100,6 +109,7 @@ export async function runDeployHtml(
   // value flag は `--key=value` inline 形式 (中身に `--` があっても flag 化しない)。
   const args: string[] = ['deploy', '--json', '--no-interactive']
   if (input.room) args.push(`--room=${input.room}`)
+  if (input.name !== undefined) args.push(`--name=${input.name}`)
   if (input.expires) args.push(`--expires=${input.expires}`)
   if (input.visibility) args.push(`--visibility=${input.visibility}`)
   if (input.new) args.push('--new')

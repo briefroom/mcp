@@ -1,6 +1,6 @@
 {
   "name": "@briefroom/mcp",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "briefroom stdio MCP server — expose the briefroom CLI to Claude Code, Codex, and other agents.",
   "license": "MIT",
   "mcpName": "io.github.briefroom/mcp",
@@ -49,7 +49,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@briefroom/cli": "^0.2.0",
+    "@briefroom/cli": "^0.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "zod": "^4.4.3"
   },

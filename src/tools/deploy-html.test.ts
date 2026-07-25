@@ -133,6 +133,25 @@ describe('deploy_html tool', () => {
     expect(calls[0].args).toContain('--visibility=unlisted')
   })
 
+  it('判断 #105: passes --name=<display> inline (Japanese OK) when name is provided', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml(
+      { path: '.', name: '提案書 A 社' },
+      { spawn, cliBinPath: FAKE_BIN, nodePath: FAKE_NODE },
+    )
+    // inline `=` で 1 トークン化 (flag 注入面積を最小化)
+    expect(calls[0].args).toContain('--name=提案書 A 社')
+  })
+
+  it('判断 #105: omits --name when name is not provided (= 未指定は API 側で既存名維持)', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml(
+      { path: '.' },
+      { spawn, cliBinPath: FAKE_BIN, nodePath: FAKE_NODE },
+    )
+    expect(calls[0].args.some((a) => a.startsWith('--name'))).toBe(false)
+  })
+
   it('passes password via BRIEFROOM_SHARE_PASSWORD env, never as an argv flag', async () => {
     const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
     await runDeployHtml(
@@ -240,6 +259,27 @@ describe('deploy_html schema-level flag injection defense', () => {
     expect(
       deployHtmlSchema.safeParse({ path: '.', room: 'demo-room-a' }).success,
     ).toBe(true)
+  })
+
+  it('判断 #105: accepts name (1-100 chars, any language incl. Japanese)', () => {
+    expect(
+      deployHtmlSchema.safeParse({ path: '.', name: '提案書 A 社' }).success,
+    ).toBe(true)
+    expect(
+      deployHtmlSchema.safeParse({ path: '.', name: 'Proposal for Acme' })
+        .success,
+    ).toBe(true)
+    // 空文字は zod min(1) で reject (API 側の 400 に依存しない早期 reject)
+    expect(deployHtmlSchema.safeParse({ path: '.', name: '' }).success).toBe(
+      false,
+    )
+    // 100 字ちょうどは OK、101 字は reject
+    expect(
+      deployHtmlSchema.safeParse({ path: '.', name: 'a'.repeat(100) }).success,
+    ).toBe(true)
+    expect(
+      deployHtmlSchema.safeParse({ path: '.', name: 'a'.repeat(101) }).success,
+    ).toBe(false)
   })
 
   it('accepts password (6-128) and visibility enum, rejects out-of-range', () => {

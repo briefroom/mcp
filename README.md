@@ -148,7 +148,8 @@ Two options — pick whichever fits your setup:
 ```jsonc
 {
   "path": "./mockups",        // required — directory to deploy
-  "room": "demo-a",           // optional slug override
+  "room": "demo-a",           // optional — room slug: ascii identifier of the room to redeploy into
+  "name": "企画書 v2",         // optional — room display name, 1-100 chars, any language
   "expires": "7d",            // optional — "7d" | "30d" | "never" (also updates the existing link on redeploy)
   "new": false,               // optional — start a brand new room
   "password": "s3cret",       // optional — password-protect the link (Pro+ plans; passed to the CLI via env, never argv)
@@ -157,6 +158,14 @@ Two options — pick whichever fits your setup:
 ```
 
 Returns the raw CLI JSON (`share_url`, `room_id`, `version_number`, `visibility`, …).
+
+Three identifiers that are easy to confuse:
+
+| Field | What it is |
+|---|---|
+| `name` | Display name shown on the dashboard and in the viewer. Any language. Set it on the first deploy; on a redeploy it updates the room name **only when passed explicitly** (omit it to keep the current name). |
+| `room` | Room slug — an ascii kebab-case identifier used only to find the existing room to redeploy into. Never part of the share URL. |
+| share URL | Always auto-issued with a random token (`/s/<token>`). Not derived from `name` or `room`. |
 
 ### `get_feedback`
 
