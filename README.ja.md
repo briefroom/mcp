@@ -150,14 +150,19 @@ Cursor は MCP 設定の `env` ブロック内で `${VAR}` を展開しないた
   "path": "./mockups",        // 必須 — デプロイ対象ディレクトリ
   "room": "demo-a",           // 任意 — ルーム slug（再デプロイ先を指定する ascii 識別子）
   "name": "企画書 v2",         // 任意 — ルーム表示名、1〜100 字、日本語可
-  "expires": "7d",            // 任意 — "7d" | "30d" | "never"（再デプロイ時に既存リンクの期限も更新）
+  "expires": "7d",            // 任意 — "24h" | "7d" | "30d" | "90d" | "never"（Free は 24h / 7d のみ、自分専用ルームは免除。再デプロイ時に既存リンクの期限も更新）
   "new": false,               // 任意 — 新規ルームを開く
   "password": "s3cret",       // 任意 — リンクにパスワード（Pro+ プラン、CLI へは env で渡し argv には出しません）
-  "visibility": "unlisted"    // 任意 — "unlisted" | "password_protected"、"unlisted" は既存パスワードをクリア
+  "visibility": "unlisted",   // 任意 — "unlisted" | "password_protected" | "email_invite_only"、"unlisted" は既存パスワードをクリア
+  "private": false,           // 任意 — true は visibility "email_invite_only" の短縮形: ログイン中の本人だけが開ける自分専用ルーム
+  "allow_comments": true,     // 任意 — false でコメント欄（サイドバー）を隠す。閲覧者にはページ + ヘッダーだけ。全プラン
+  "display_mode": "review"    // 任意 — "review"（ヘッダー + コメント欄）| "live"（briefroom の UI なし全画面）。全プラン
 }
 ```
 
-CLI の JSON (`share_url`, `room_id`, `version_number`, `visibility`, …) をそのまま返します。
+CLI の JSON (`share_url`, `room_id`, `version_number`, `visibility`, `allow_comments`, `display_mode`, …) をそのまま返します。
+
+**再デプロイ**時、`expires` / `password` / `visibility` / `allow_comments` / `display_mode` は明示した項目だけが**同じ URL のまま**既存リンクに反映されます。省略した項目は現状維持です。
 
 混同しやすい 3 つの識別子:
 

@@ -6,12 +6,12 @@
     "url": "https://github.com/briefroom/mcp",
     "source": "github"
   },
-  "version": "0.3.0",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@briefroom/mcp",
-      "version": "0.3.0",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       }

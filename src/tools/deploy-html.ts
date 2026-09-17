@@ -7,7 +7,7 @@ import {
 } from '../lib/tool-result.js'
 
 export const deployHtmlDescription =
-  'Zip a local directory of HTML/CSS/JS and upload it to briefroom, returning a share URL. Supports a share-link expiry (also applied to the existing link on redeploy), a room display `name` (any language, e.g. Japanese; distinct from `room` slug — see below), and password protection (Pro+ plans). Uses BRIEFROOM_TOKEN (or the briefroom CLI login) for authentication. Non-interactive.'
+  'Zip a local directory of HTML/CSS/JS and upload it to briefroom, returning a share URL. Supports a share-link expiry (`expires`: 24h | 7d | 30d | 90d | never), a room display `name` (any language, e.g. Japanese; distinct from `room` slug — see below), password protection (Pro+ plans), `private: true` for a room only the signed-in owner can open (every plan), `allow_comments: false` to hide the comment sidebar from viewers (page + header only), and `display_mode: "live"` for a chrome-less full-screen page instead of the default review UI. On a redeploy, `expires` / `password` / `visibility` / `allow_comments` / `display_mode` are applied to the existing link (same URL) only when set explicitly; omitted fields are left unchanged. Uses BRIEFROOM_TOKEN (or the briefroom CLI login) for authentication. Non-interactive.'
 
 // Flag injection 防御: `-` 始まりの値は CLI の argv パーサ (citty/mri) に
 // フラグとして解釈され、`--api-url=http://evil/` を注入して PAT を攻撃者に
@@ -47,10 +47,10 @@ export const deployHtmlInputShape = {
       'Room display name shown on the dashboard and viewer (1-100 chars, any language including Japanese). Distinct from `room` (slug) and from the auto-issued share URL token. Sets the name on first deploy; on redeploy, updates the existing room name only when set explicitly.',
     ),
   expires: z
-    .enum(['7d', '30d', 'never'])
+    .enum(['24h', '7d', '30d', '90d', 'never'])
     .optional()
     .describe(
-      'Share link expiry. Defaults to 7d on the server. When set on a redeploy, it also updates the existing link.',
+      'Share link expiry: 24h | 7d | 30d | 90d | never. Defaults to 7d on the server. Free plan allows 24h and 7d only (30d / 90d / never need Pro+; private rooms are exempt). When set on a redeploy, it also updates the existing link (same URL); omit to leave the current expiry unchanged.',
     ),
   new: z
     .boolean()
@@ -67,10 +67,28 @@ export const deployHtmlInputShape = {
       'Protect the share link with a password (Pro+ plans only). Passed to the CLI via an environment variable, never as an argv flag, so it is not exposed in the process list.',
     ),
   visibility: z
-    .enum(['unlisted', 'password_protected'])
+    .enum(['unlisted', 'password_protected', 'email_invite_only'])
     .optional()
     .describe(
-      "Share link visibility. 'unlisted' removes an existing password; 'password_protected' requires the password field.",
+      "Share link visibility. 'unlisted' removes an existing password; 'password_protected' requires the password field; 'email_invite_only' makes the room private (identical to private: true).",
+    ),
+  private: z
+    .boolean()
+    .optional()
+    .describe(
+      'Make the room private: only the signed-in owner can open the URL. Available on every plan, does not count toward the shared-room limit, and can be combined with expires "never". Shorthand for visibility "email_invite_only".',
+    ),
+  allow_comments: z
+    .boolean()
+    .optional()
+    .describe(
+      'Whether viewers see the comment sidebar (default true on the server). Set false to hide comments entirely: viewers only see the page and the briefroom header. On a redeploy, applies to the existing link only when set explicitly; omit to leave the current setting unchanged. Every plan.',
+    ),
+  display_mode: z
+    .enum(['review', 'live'])
+    .optional()
+    .describe(
+      '"review" (default on the server): briefroom header + comment sidebar. "live": chrome-less full-screen page with no briefroom UI at all. On a redeploy, applies to the existing link only when set explicitly; omit to leave the current setting unchanged. Every plan.',
     ),
 }
 
@@ -78,10 +96,14 @@ export type DeployHtmlInput = {
   path: string
   room?: string
   name?: string
-  expires?: '7d' | '30d' | 'never'
+  expires?: '24h' | '7d' | '30d' | '90d' | 'never'
   new?: boolean
   password?: string
-  visibility?: 'unlisted' | 'password_protected'
+  visibility?: 'unlisted' | 'password_protected' | 'email_invite_only'
+  private?: boolean
+  /** 判断 #117: undefined = 送らない (既存リンクの設定を変えない)。 */
+  allow_comments?: boolean
+  display_mode?: 'review' | 'live'
 }
 
 export const DEPLOY_TIMEOUT_MS = 120_000
@@ -105,13 +127,48 @@ export async function runDeployHtml(
     }
   }
 
+  // 判断 #111 (T-PRIVATE-ROOM-3): private は visibility 'email_invite_only' の別名。
+  // password と同居させると「保護しつつ解除」になるので、上と同じ理由で早期に弾く。
+  if (input.private === true && input.password !== undefined) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: "Invalid input: 'password' cannot be combined with 'private'. A private room is already restricted to the signed-in owner.",
+        },
+      ],
+      isError: true,
+    }
+  }
+  if (
+    input.private === true &&
+    input.visibility !== undefined &&
+    input.visibility !== 'email_invite_only'
+  ) {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Invalid input: 'private' cannot be combined with visibility '${input.visibility}'. 'private' is shorthand for visibility 'email_invite_only'.`,
+        },
+      ],
+      isError: true,
+    }
+  }
+  const visibility = input.private === true ? 'email_invite_only' : input.visibility
+
   // 全 flag は path より前に置く (`--` 以降は全て positional 扱いになるため)。
   // value flag は `--key=value` inline 形式 (中身に `--` があっても flag 化しない)。
   const args: string[] = ['deploy', '--json', '--no-interactive']
   if (input.room) args.push(`--room=${input.room}`)
   if (input.name !== undefined) args.push(`--name=${input.name}`)
   if (input.expires) args.push(`--expires=${input.expires}`)
-  if (input.visibility) args.push(`--visibility=${input.visibility}`)
+  if (visibility) args.push(`--visibility=${visibility}`)
+  // 判断 #117: boolean は固定文字列 (値を argv に混ぜない)、enum は inline `=` 形式。
+  // どちらも schema で値域が閉じているので、agent 入力がそのまま flag になる余地はない。
+  if (input.allow_comments === false) args.push('--no-comments')
+  if (input.allow_comments === true) args.push('--comments')
+  if (input.display_mode) args.push(`--display-mode=${input.display_mode}`)
   if (input.new) args.push('--new')
   // `--` セパレータで positional を保護 (以降は flag 解釈されない)。
   args.push('--', input.path)

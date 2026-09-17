@@ -2,7 +2,11 @@ import { z } from 'zod'
 import { describe, expect, it } from 'vitest'
 
 import { createMockSpawn } from '../__tests__/mock-spawn.js'
-import { deployHtmlInputShape, runDeployHtml } from './deploy-html.js'
+import {
+  deployHtmlDescription,
+  deployHtmlInputShape,
+  runDeployHtml,
+} from './deploy-html.js'
 
 const FAKE_BIN = '/fake/cli/dist/index.js'
 const FAKE_NODE = '/fake/node'
@@ -133,6 +137,48 @@ describe('deploy_html tool', () => {
     expect(calls[0].args).toContain('--visibility=unlisted')
   })
 
+  // 判断 #111 (T-PRIVATE-ROOM-3): private → --visibility=email_invite_only へ写す。
+  it('maps private: true to --visibility=email_invite_only', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml(
+      { path: '.', private: true },
+      { spawn, cliBinPath: FAKE_BIN, nodePath: FAKE_NODE },
+    )
+    expect(calls[0].args).toContain('--visibility=email_invite_only')
+    expect(calls[0].args.some((a) => a.startsWith('--private'))).toBe(false)
+  })
+
+  it('omits --visibility when private is false / omitted (= 既定は unlisted のまま)', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml(
+      { path: '.', private: false },
+      { spawn, cliBinPath: FAKE_BIN, nodePath: FAKE_NODE },
+    )
+    expect(calls[0].args.some((a) => a.startsWith('--visibility'))).toBe(false)
+  })
+
+  it('rejects private + password without spawning the CLI', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    const result = await runDeployHtml(
+      { path: '.', private: true, password: 's3cret-pw' },
+      { spawn, cliBinPath: FAKE_BIN, nodePath: FAKE_NODE },
+    )
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toMatch(/cannot be combined with 'private'/i)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('rejects private + a conflicting visibility without spawning the CLI', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    const result = await runDeployHtml(
+      { path: '.', private: true, visibility: 'unlisted' },
+      { spawn, cliBinPath: FAKE_BIN, nodePath: FAKE_NODE },
+    )
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toMatch(/shorthand for visibility/i)
+    expect(calls).toHaveLength(0)
+  })
+
   it('判断 #105: passes --name=<display> inline (Japanese OK) when name is provided', async () => {
     const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
     await runDeployHtml(
@@ -216,6 +262,132 @@ describe('deploy_html tool', () => {
   })
 })
 
+/**
+ * 判断 #117 (AI-SHARE-SETTINGS): `allow_comments` / `display_mode` / 期限 5 択。
+ * boolean は固定文字列 (`--no-comments` / `--comments`)、enum は `--key=value` inline 形式で、
+ * すべて path より前・`--` より前に置く (flag injection 防御の規約)。
+ */
+describe('deploy_html allow_comments / display_mode / expires (判断 #117)', () => {
+  const opts = { cliBinPath: FAKE_BIN, nodePath: FAKE_NODE }
+
+  it('allow_comments: false → 固定文字列 --no-comments (値を argv に混ぜない)', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml({ path: './site', allow_comments: false }, { spawn, ...opts })
+    expect(calls[0].args).toEqual([
+      FAKE_BIN,
+      'deploy',
+      '--json',
+      '--no-interactive',
+      '--no-comments',
+      '--',
+      './site',
+    ])
+  })
+
+  it('allow_comments: true → 固定文字列 --comments (再び ON にできる)', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml({ path: '.', allow_comments: true }, { spawn, ...opts })
+    expect(calls[0].args).toContain('--comments')
+    expect(calls[0].args).not.toContain('--no-comments')
+  })
+
+  it('allow_comments 未指定 → どちらの flag も付けない (= 既存リンク不変)', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml({ path: '.' }, { spawn, ...opts })
+    expect(calls[0].args.some((a) => a.includes('comments'))).toBe(false)
+  })
+
+  it('display_mode: live → --display-mode=live (inline `=`、`--` より前)', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml({ path: './site', display_mode: 'live' }, { spawn, ...opts })
+    const args = calls[0].args
+    expect(args).toContain('--display-mode=live')
+    expect(args.indexOf('--display-mode=live')).toBeLessThan(args.indexOf('--'))
+  })
+
+  it('display_mode 未指定 → --display-mode を付けない', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml({ path: '.' }, { spawn, ...opts })
+    expect(calls[0].args.some((a) => a.startsWith('--display-mode'))).toBe(false)
+  })
+
+  it('expires: 24h / 90d (新しい 2 択) も --expires=<v> で渡る', async () => {
+    for (const v of ['24h', '90d'] as const) {
+      const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+      await runDeployHtml({ path: '.', expires: v }, { spawn, ...opts })
+      expect(calls[0].args).toContain(`--expires=${v}`)
+    }
+  })
+
+  it('3 項目を同時に指定しても順序は flags → -- → path のまま', async () => {
+    const { spawn, calls } = createMockSpawn({ code: 0, stdout: '{}' })
+    await runDeployHtml(
+      {
+        path: './site',
+        expires: '90d',
+        allow_comments: false,
+        display_mode: 'live',
+      },
+      { spawn, ...opts },
+    )
+    expect(calls[0].args).toEqual([
+      FAKE_BIN,
+      'deploy',
+      '--json',
+      '--no-interactive',
+      '--expires=90d',
+      '--no-comments',
+      '--display-mode=live',
+      '--',
+      './site',
+    ])
+  })
+
+  it('schema: expires は 5 択 (24h | 7d | 30d | 90d | never)、それ以外は reject', () => {
+    for (const v of ['24h', '7d', '30d', '90d', 'never']) {
+      expect(deployHtmlSchema.safeParse({ path: '.', expires: v }).success).toBe(
+        true,
+      )
+    }
+    for (const v of ['1h', '14d', 'forever', '']) {
+      expect(deployHtmlSchema.safeParse({ path: '.', expires: v }).success).toBe(
+        false,
+      )
+    }
+  })
+
+  it('schema: display_mode は review | live のみ、それ以外は reject (--api-url 注入含む)', () => {
+    expect(
+      deployHtmlSchema.safeParse({ path: '.', display_mode: 'review' }).success,
+    ).toBe(true)
+    expect(
+      deployHtmlSchema.safeParse({ path: '.', display_mode: 'live' }).success,
+    ).toBe(true)
+    for (const v of ['fullscreen', 'Live', '', 'live --api-url=http://evil/']) {
+      expect(
+        deployHtmlSchema.safeParse({ path: '.', display_mode: v }).success,
+      ).toBe(false)
+    }
+  })
+
+  it('schema: allow_comments は boolean のみ (文字列 "false" は reject)', () => {
+    expect(
+      deployHtmlSchema.safeParse({ path: '.', allow_comments: false }).success,
+    ).toBe(true)
+    expect(
+      deployHtmlSchema.safeParse({ path: '.', allow_comments: 'false' }).success,
+    ).toBe(false)
+  })
+
+  it('description に 3 項目と「同じ URL のまま / 未指定は不変」が書かれている (AI が読む)', () => {
+    expect(deployHtmlDescription).toContain('allow_comments')
+    expect(deployHtmlDescription).toContain('display_mode')
+    expect(deployHtmlDescription).toContain('24h | 7d | 30d | 90d | never')
+    expect(deployHtmlDescription).toContain('same URL')
+    expect(deployHtmlDescription).toContain('only when set explicitly')
+  })
+})
+
 describe('deploy_html schema-level flag injection defense', () => {
   it('rejects path that starts with -- (--api-url injection attempt)', () => {
     const r = deployHtmlSchema.safeParse({
@@ -294,11 +466,22 @@ describe('deploy_html schema-level flag injection defense', () => {
     expect(
       deployHtmlSchema.safeParse({ path: '.', password: 'short' }).success,
     ).toBe(false)
-    // enum 外 (email_invite_only は deploy 経路非対応) は reject
+    // 判断 #111 (T-PRIVATE-ROOM-3): email_invite_only = 自分専用ルームとして受け付ける
     expect(
       deployHtmlSchema.safeParse({ path: '.', visibility: 'email_invite_only' })
         .success,
+    ).toBe(true)
+    // enum 外 (org_only は deploy 経路非対応) は reject
+    expect(
+      deployHtmlSchema.safeParse({ path: '.', visibility: 'org_only' }).success,
     ).toBe(false)
+  })
+
+  // 判断 #111 (T-PRIVATE-ROOM-3): private は visibility 'email_invite_only' の別名。
+  it('accepts private: true and maps it to --visibility=email_invite_only', async () => {
+    expect(deployHtmlSchema.safeParse({ path: '.', private: true }).success).toBe(
+      true,
+    )
   })
 })
 

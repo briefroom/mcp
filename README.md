@@ -7,6 +7,7 @@
 - **Deploy in one call** — zip a local directory, upload it, get a share URL back.
 - **Pull reviewer feedback** — grab comments from the browser as AI-agent-ready Markdown.
 - **List your rooms** — enumerate your existing deploys with their share URLs.
+- **Keep it to yourself** — deploy straight into a private room only you can open while signed in.
 
 <!-- demo.gif placeholder — record a Claude Code / Cursor session driving deploy_html + get_feedback -->
 
@@ -150,14 +151,22 @@ Two options — pick whichever fits your setup:
   "path": "./mockups",        // required — directory to deploy
   "room": "demo-a",           // optional — room slug: ascii identifier of the room to redeploy into
   "name": "企画書 v2",         // optional — room display name, 1-100 chars, any language
-  "expires": "7d",            // optional — "7d" | "30d" | "never" (also updates the existing link on redeploy)
+  "expires": "7d",            // optional — "24h" | "7d" | "30d" | "90d" | "never" (Free: 24h / 7d only, private rooms exempt; also updates the existing link on redeploy)
   "new": false,               // optional — start a brand new room
   "password": "s3cret",       // optional — password-protect the link (Pro+ plans; passed to the CLI via env, never argv)
-  "visibility": "unlisted"    // optional — "unlisted" | "password_protected"; "unlisted" clears an existing password
+  "visibility": "unlisted",   // optional — "unlisted" | "password_protected" | "email_invite_only"; "unlisted" clears an existing password
+  "private": false,           // optional — true is shorthand for visibility "email_invite_only": only you, signed in, can open the room
+  "allow_comments": true,     // optional — false hides the comment sidebar (viewers see the page + header only); every plan
+  "display_mode": "review"    // optional — "review" (header + comment sidebar) | "live" (chrome-less full-screen page); every plan
 }
 ```
 
-Returns the raw CLI JSON (`share_url`, `room_id`, `version_number`, `visibility`, …).
+Returns the raw CLI JSON (`share_url`, `room_id`, `version_number`, `visibility`, `allow_comments`,
+`display_mode`, …).
+
+On a **redeploy**, `expires` / `password` / `visibility` / `allow_comments` / `display_mode` are
+applied to the **existing** share link (same URL) only when you pass them explicitly. Omit a field
+to leave that setting unchanged.
 
 Three identifiers that are easy to confuse:
 
